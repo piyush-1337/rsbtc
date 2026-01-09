@@ -1,21 +1,88 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{U256, crypto::{PublicKey, Signature}, sha256::Hash, util::MerkelRoot};
+use crate::{
+    U256,
+    crypto::{PublicKey, Signature},
+    error::{BtcError, Result},
+    sha256::Hash,
+    util::MerkelRoot,
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlockChain {
+    pub utxos: HashMap<Hash, TransactionOutput>,
     pub blocks: Vec<Block>,
 }
 
 impl BlockChain {
     pub fn new() -> Self {
-        BlockChain { blocks: Vec::new() }
+        BlockChain {
+            blocks: Vec::new(),
+            utxos: HashMap::new(),
+        }
     }
 
-    pub fn add_block(&mut self, block: Block) {
+    pub fn rebuild_utxos(&mut self) {
+        for block in &self.blocks {
+            for tx in &block.transactions {
+                for input in &tx.inputs {
+                    self.utxos.remove(&input.prev_tx_output_hash);
+                }
+
+                for output in tx.outputs.iter() {
+                    self.utxos.insert(tx.hash(), output.clone());
+                }
+            }
+        }
+    }
+
+    pub fn add_block(&mut self, block: Block) -> Result<()> {
+        if self.blocks.is_empty() {
+            if block.header.prev_block_hash != Hash::zero() {
+                println!("zero hash");
+                return Err(BtcError::InvalidBlock);
+            }
+        } else {
+            let last_block = self.blocks.last().unwrap();
+
+            if block.header.prev_block_hash != last_block.hash() {
+                println!("prev hash is wrong");
+                return Err(BtcError::InvalidBlock);
+            }
+
+            if !block.header.hash().matches_target(block.header.target) {
+                println!("target does not match");
+                return Err(BtcError::InvalidBlock);
+            }
+
+            let calculated_merkel_root = MerkelRoot::calculate(&block.transactions);
+
+            if calculated_merkel_root != block.header.merkle_root {
+                println!("merkel root does not match");
+                return Err(BtcError::InvalidMerkleRoot);
+            }
+
+            if block.header.timestamp <= last_block.header.timestamp {
+                return Err(BtcError::InvalidBlock);
+            }
+
+            block.verify_transactions(self.block_height(), self.utxos())?;
+        }
+
         self.blocks.push(block);
+        Ok(())
+    }
+
+    pub fn block_height(&self) -> u64 {
+        self.blocks.len() as u64
+    }
+
+    pub fn utxos(&self) -> &HashMap<Hash, TransactionOutput> {
+        &self.utxos
     }
 }
 
@@ -41,6 +108,125 @@ impl Block {
 
     pub fn hash(&self) -> Hash {
         Hash::hash(self)
+    }
+
+    pub fn verify_transactions(
+        &self,
+        predicted_block_height: u64,
+        utxos: &HashMap<Hash, TransactionOutput>,
+    ) -> Result<()> {
+        let mut inputs = HashMap::new();
+
+        if self.transactions.is_empty() {
+            return Err(BtcError::InvalidTransaction);
+        }
+
+        self.verify_coinbase_transaction(predicted_block_height, utxos)?;
+
+        for tx in self.transactions.iter().skip(1) {
+            let mut input_value = 0;
+            let mut output_value = 0;
+
+            for input in &tx.inputs {
+                let prev_output = utxos.get(&input.prev_tx_output_hash);
+
+                if prev_output.is_none() {
+                    return Err(BtcError::InvalidTransaction);
+                }
+
+                let prev_output = prev_output.unwrap();
+
+                if inputs.contains_key(&input.prev_tx_output_hash) {
+                    return Err(BtcError::InvalidTransaction);
+                }
+
+                if !input
+                    .signature
+                    .verify(&input.prev_tx_output_hash, &prev_output.pubkey)
+                {
+                    return Err(BtcError::InvalidSignature);
+                }
+
+                input_value += prev_output.value;
+                inputs.insert(input.prev_tx_output_hash, prev_output.clone());
+            }
+
+            for output in &tx.outputs {
+                output_value += output.value;
+            }
+
+            if input_value < output_value {
+                return Err(BtcError::InvalidTransaction);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn verify_coinbase_transaction(
+        &self,
+        predicted_block_height: u64,
+        utxos: &HashMap<Hash, TransactionOutput>,
+    ) -> Result<()> {
+        let coinbase_transaction = &self.transactions[0];
+
+        if !coinbase_transaction.inputs.is_empty() {
+            return Err(BtcError::InvalidTransaction);
+        }
+
+        if coinbase_transaction.outputs.is_empty() {
+            return Err(BtcError::InvalidTransaction);
+        }
+
+        let miner_fees = self.calculate_miner_fees(utxos)?;
+        let block_reward = crate::INITIAL_REWARD * 10u64.pow(8)
+            / 2u64.pow((predicted_block_height / crate::HALVING_INTERVAL) as u32);
+
+        let total_coinbase_outputs: u64 = coinbase_transaction
+            .outputs
+            .iter()
+            .map(|output| output.value)
+            .sum();
+
+        if total_coinbase_outputs != block_reward + miner_fees {
+            return Err(BtcError::InvalidTransaction);
+        }
+        Ok(())
+    }
+
+    pub fn calculate_miner_fees(&self, utxos: &HashMap<Hash, TransactionOutput>) -> Result<u64> {
+        let mut inputs = HashMap::new();
+        let mut outputs = HashMap::new();
+
+        for transaction in self.transactions.iter().skip(1) {
+            for input in &transaction.inputs {
+                let prev_output = utxos.get(&input.prev_tx_output_hash);
+
+                if prev_output.is_none() {
+                    return Err(BtcError::InvalidTransaction);
+                }
+
+                let prev_output = prev_output.unwrap();
+
+                if inputs.contains_key(&input.prev_tx_output_hash) {
+                    return Err(BtcError::InvalidTransaction);
+                }
+
+                inputs.insert(input.prev_tx_output_hash, prev_output.clone());
+            }
+
+            for output in &transaction.outputs {
+                if outputs.contains_key(&output.hash()) {
+                    return Err(BtcError::InvalidTransaction);
+                }
+                outputs.insert(output.hash(), output.clone());
+            }
+        }
+
+        let inputs_value: u64 = inputs.values().map(|output| output.value).sum();
+        let outputs_value: u64 = outputs.values().map(|output| output.value).sum();
+
+        Ok(inputs_value - outputs_value)
     }
 }
 
@@ -99,9 +285,9 @@ pub struct TransactionInput {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TransactionOutput {
-    pub value: U256,
+    pub value: u64,
     pub unique_id: Uuid,
-    pub pubkey: PublicKey
+    pub pubkey: PublicKey,
 }
 
 impl TransactionOutput {

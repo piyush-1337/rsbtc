@@ -25,6 +25,5 @@ impl MerkelRoot {
         }
 
         Self(layer[0])
-
     }
 }
