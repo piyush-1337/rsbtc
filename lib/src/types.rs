@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{U256, crypto::{PublicKey, Signature}};
+use crate::{U256, crypto::{PublicKey, Signature}, sha256::Hash, util::MerkelRoot};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlockChain {
@@ -48,8 +48,8 @@ impl Block {
 pub struct BlockHeader {
     pub timestamp: DateTime<Utc>,
     pub nonce: u64,
-    pub prev_block_hash: [u8; 32],
-    pub merkle_root: [u8; 32],
+    pub prev_block_hash: Hash,
+    pub merkle_root: MerkelRoot,
     pub target: U256,
 }
 
@@ -57,8 +57,8 @@ impl BlockHeader {
     pub fn new(
         timestamp: DateTime<Utc>,
         nonce: u64,
-        prev_block_hash: [u8; 32],
-        merkle_root: [u8; 32],
+        prev_block_hash: Hash,
+        merkle_root: MerkelRoot,
         target: U256,
     ) -> Self {
         Self {
@@ -93,7 +93,7 @@ impl Transaction {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TransactionInput {
-    pub prev_tx_output_hash: [u8; 32],
+    pub prev_tx_output_hash: Hash,
     pub signature: Signature,
 }
 
@@ -102,4 +102,10 @@ pub struct TransactionOutput {
     pub value: U256,
     pub unique_id: Uuid,
     pub pubkey: PublicKey
+}
+
+impl TransactionOutput {
+    pub fn hash(&self) -> Hash {
+        Hash::hash(self)
+    }
 }

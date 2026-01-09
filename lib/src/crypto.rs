@@ -1,4 +1,7 @@
-use ecdsa::{Signature as EcdsaSignature, SigningKey, VerifyingKey, signature::Signer};
+use ecdsa::{
+    Signature as EcdsaSignature, SigningKey, VerifyingKey,
+    signature::{Signer, rand_core::OsRng},
+};
 use k256::Secp256k1;
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +13,16 @@ pub struct PublicKey(pub VerifyingKey<Secp256k1>);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PrivateKey(#[serde(with = "signkey_serde")] pub SigningKey<Secp256k1>);
+
+impl PrivateKey {
+    pub fn new_key() -> Self {
+        Self(SigningKey::random(&mut OsRng))
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey(*self.0.verifying_key())
+    }
+}
 
 mod signkey_serde {
     use serde::Deserialize;
