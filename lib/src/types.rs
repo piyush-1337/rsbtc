@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use bigdecimal::{BigDecimal};
+use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -151,6 +151,27 @@ impl BlockChain {
             }
 
             known_inputs.insert(input.prev_tx_output_hash);
+        }
+
+        for input in &tx.inputs {
+            if let Some((true, _)) = self.utxos.get(&input.prev_tx_output_hash) {
+                let referencing_tx = self.mempool.iter().enumerate().find(|(_, transaction)| {
+                    transaction
+                        .outputs
+                        .iter()
+                        .any(|output| output.hash() == input.prev_tx_output_hash)
+                });
+
+                if let Some((idx, referencing_tx)) = referencing_tx {
+                    for input in &referencing_tx.inputs {
+                        self.utxos
+                            .entry(input.prev_tx_output_hash)
+                            .and_modify(|(marked, _)| {
+                                *marked = false;
+                            });
+                    }
+                }
+            }
         }
 
         let all_inputs = tx
