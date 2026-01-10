@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use bigdecimal::{BigDecimal, num_traits::CheckedAdd};
+use bigdecimal::{BigDecimal};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlockChain {
-    utxos: HashMap<Hash, TransactionOutput>,
+    utxos: HashMap<Hash, (bool, TransactionOutput)>,
     target: U256,
     blocks: Vec<Block>,
     #[serde(default, skip_serializing)]
@@ -40,7 +40,7 @@ impl BlockChain {
                 }
 
                 for output in tx.outputs.iter() {
-                    self.utxos.insert(tx.hash(), output.clone());
+                    self.utxos.insert(tx.hash(), (false, output.clone()));
                 }
             }
         }
@@ -160,15 +160,12 @@ impl BlockChain {
                 self.utxos
                     .get(&input.prev_tx_output_hash)
                     .expect("BUG: impossible")
+                    .1
                     .value
             })
             .sum::<u64>();
 
-        let all_outputs = tx
-            .outputs
-            .iter()
-            .map(|output| output.value)
-            .sum::<u64>();
+        let all_outputs = tx.outputs.iter().map(|output| output.value).sum::<u64>();
 
         if all_inputs < all_outputs {
             return Err(BtcError::InvalidTransaction);
@@ -184,6 +181,7 @@ impl BlockChain {
                     self.utxos
                         .get(&input.prev_tx_output_hash)
                         .expect("BUG: impossible")
+                        .1
                         .value
                 })
                 .sum();
@@ -195,7 +193,7 @@ impl BlockChain {
         Ok(())
     }
 
-    pub fn utxos(&self) -> &HashMap<Hash, TransactionOutput> {
+    pub fn utxos(&self) -> &HashMap<Hash, (bool, TransactionOutput)> {
         &self.utxos
     }
 
@@ -243,7 +241,7 @@ impl Block {
     pub fn verify_transactions(
         &self,
         predicted_block_height: u64,
-        utxos: &HashMap<Hash, TransactionOutput>,
+        utxos: &HashMap<Hash, (bool, TransactionOutput)>,
     ) -> Result<()> {
         let mut inputs = HashMap::new();
 
@@ -258,7 +256,9 @@ impl Block {
             let mut output_value = 0;
 
             for input in &tx.inputs {
-                let prev_output = utxos.get(&input.prev_tx_output_hash);
+                let prev_output = utxos
+                    .get(&input.prev_tx_output_hash)
+                    .map(|(_, output)| output);
 
                 if prev_output.is_none() {
                     return Err(BtcError::InvalidTransaction);
@@ -296,7 +296,7 @@ impl Block {
     pub fn verify_coinbase_transaction(
         &self,
         predicted_block_height: u64,
-        utxos: &HashMap<Hash, TransactionOutput>,
+        utxos: &HashMap<Hash, (bool, TransactionOutput)>,
     ) -> Result<()> {
         let coinbase_transaction = &self.transactions[0];
 
@@ -324,13 +324,18 @@ impl Block {
         Ok(())
     }
 
-    pub fn calculate_miner_fees(&self, utxos: &HashMap<Hash, TransactionOutput>) -> Result<u64> {
+    pub fn calculate_miner_fees(
+        &self,
+        utxos: &HashMap<Hash, (bool, TransactionOutput)>,
+    ) -> Result<u64> {
         let mut inputs = HashMap::new();
         let mut outputs = HashMap::new();
 
         for transaction in self.transactions.iter().skip(1) {
             for input in &transaction.inputs {
-                let prev_output = utxos.get(&input.prev_tx_output_hash);
+                let prev_output = utxos
+                    .get(&input.prev_tx_output_hash)
+                    .map(|(_, output)| output);
 
                 if prev_output.is_none() {
                     return Err(BtcError::InvalidTransaction);
