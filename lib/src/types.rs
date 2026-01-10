@@ -19,7 +19,7 @@ pub struct BlockChain {
     target: U256,
     blocks: Vec<Block>,
     #[serde(default, skip_serializing)]
-    mempool: Vec<Transaction>,
+    mempool: Vec<(DateTime<Utc>, Transaction)>,
 }
 
 impl BlockChain {
@@ -155,14 +155,14 @@ impl BlockChain {
 
         for input in &tx.inputs {
             if let Some((true, _)) = self.utxos.get(&input.prev_tx_output_hash) {
-                let referencing_tx = self.mempool.iter().enumerate().find(|(_, transaction)| {
+                let referencing_tx = self.mempool.iter().enumerate().find(|(_, (_, transaction))| {
                     transaction
                         .outputs
                         .iter()
                         .any(|output| output.hash() == input.prev_tx_output_hash)
                 });
 
-                if let Some((idx, referencing_tx)) = referencing_tx {
+                if let Some((idx, (_, referencing_tx))) = referencing_tx {
                     for input in &referencing_tx.inputs {
                         self.utxos
                             .entry(input.prev_tx_output_hash)
@@ -173,9 +173,11 @@ impl BlockChain {
 
                     self.mempool.remove(idx);
                 } else {
-                    self.utxos.entry(input.prev_tx_output_hash).and_modify(|(marked, _)| {
-                        *marked = false;
-                    });
+                    self.utxos
+                        .entry(input.prev_tx_output_hash)
+                        .and_modify(|(marked, _)| {
+                            *marked = false;
+                        });
                 }
             }
         }
@@ -195,12 +197,21 @@ impl BlockChain {
         let all_outputs = tx.outputs.iter().map(|output| output.value).sum::<u64>();
 
         if all_inputs < all_outputs {
+            print!("all inputs are less than all outputs");
             return Err(BtcError::InvalidTransaction);
         }
 
-        self.mempool.push(tx);
+        for input in &tx.inputs {
+            self.utxos
+                .entry(input.prev_tx_output_hash)
+                .and_modify(|(marked, _)| {
+                    *marked = true;
+                });
+        }
 
-        self.mempool.sort_by_key(|transaction| {
+        self.mempool.push((Utc::now(), tx));
+
+        self.mempool.sort_by_key(|(_, transaction)| {
             let all_input: u64 = transaction
                 .inputs
                 .iter()
@@ -236,7 +247,7 @@ impl BlockChain {
         self.blocks.len() as u64
     }
 
-    pub fn mempool(&self) -> &[Transaction] {
+    pub fn mempool(&self) -> &[(DateTime<Utc>, Transaction)] {
         &self.mempool
     }
 }
