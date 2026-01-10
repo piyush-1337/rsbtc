@@ -95,7 +95,11 @@ impl BlockChain {
             return;
         }
 
-        if !self.blocks.len().is_multiple_of(crate::DIFICULTY_UPDATE_INTERVAL as usize) {
+        if !self
+            .blocks
+            .len()
+            .is_multiple_of(crate::DIFICULTY_UPDATE_INTERVAL as usize)
+        {
             return;
         }
 
@@ -135,7 +139,41 @@ impl BlockChain {
         self.target = new_target.min(crate::MIN_TARGET);
     }
 
-    pub fn add_to_mempool(&mut self, tx: Transaction) {
+    pub fn add_to_mempool(&mut self, tx: Transaction) -> Result<()> {
+        let mut known_inputs = HashSet::new();
+        for input in &tx.inputs {
+            if !self.utxos.contains_key(&input.prev_tx_output_hash) {
+                return Err(BtcError::InvalidTransaction);
+            }
+
+            if known_inputs.contains(&input.prev_tx_output_hash) {
+                return Err(BtcError::InvalidTransaction);
+            }
+
+            known_inputs.insert(input.prev_tx_output_hash);
+        }
+
+        let all_inputs = tx
+            .inputs
+            .iter()
+            .map(|input| {
+                self.utxos
+                    .get(&input.prev_tx_output_hash)
+                    .expect("BUG: impossible")
+                    .value
+            })
+            .sum::<u64>();
+
+        let all_outputs = tx
+            .outputs
+            .iter()
+            .map(|output| output.value)
+            .sum::<u64>();
+
+        if all_inputs < all_outputs {
+            return Err(BtcError::InvalidTransaction);
+        }
+
         self.mempool.push(tx);
 
         self.mempool.sort_by_key(|transaction| {
@@ -154,6 +192,7 @@ impl BlockChain {
 
             all_input - all_output // sort by miner fees
         });
+        Ok(())
     }
 
     pub fn utxos(&self) -> &HashMap<Hash, TransactionOutput> {
