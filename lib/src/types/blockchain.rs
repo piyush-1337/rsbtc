@@ -4,6 +4,8 @@ use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
+
 use crate::{
     U256,
     error::{BtcError, Result},
@@ -12,7 +14,7 @@ use crate::{
         block::Block,
         transaction::{Transaction, TransactionOutput},
     },
-    util::MerkelRoot,
+    util::{MerkelRoot, Savable},
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -284,5 +286,17 @@ impl BlockChain {
 impl Default for BlockChain {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Savable for BlockChain {
+    fn load<I: Read>(reader: I) -> IoResult<Self> {
+        ciborium::de::from_reader(reader)
+            .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Failed to deserialize BlockChain"))
+    }
+
+    fn save<O: Write>(&self, writer: O) -> IoResult<()> {
+        ciborium::ser::into_writer(self, writer)
+            .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Failed to serialize BlockChain"))
     }
 }
