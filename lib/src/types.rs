@@ -170,6 +170,12 @@ impl BlockChain {
                                 *marked = false;
                             });
                     }
+
+                    self.mempool.remove(idx);
+                } else {
+                    self.utxos.entry(input.prev_tx_output_hash).and_modify(|(marked, _)| {
+                        *marked = false;
+                    });
                 }
             }
         }
