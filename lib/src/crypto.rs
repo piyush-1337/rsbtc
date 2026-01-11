@@ -35,24 +35,15 @@ impl Savable for PublicKey {
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
         let public_key = buf.parse().map_err(|_| {
-            IoError::new(
-                IoErrorKind::InvalidData,
-                "Failed to deserialize public key",
-            )
+            IoError::new(IoErrorKind::InvalidData, "Failed to deserialize public key")
         })?;
         Ok(PublicKey(public_key))
     }
 
     fn save<O: Write>(&self, mut writer: O) -> IoResult<()> {
-        let s = self
-            .0
-            .to_public_key_pem(Default::default())
-            .map_err(|_| {
-                IoError::new(
-                    IoErrorKind::InvalidData,
-                    "Failed to serialize public key",
-                )
-            })?;
+        let s = self.0.to_public_key_pem(Default::default()).map_err(|_| {
+            IoError::new(IoErrorKind::InvalidData, "Failed to serialize public key")
+        })?;
 
         writer.write_all(s.as_bytes())?;
         Ok(())

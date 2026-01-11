@@ -1,7 +1,7 @@
 use btclib::types::Block;
 use btclib::util::Savable;
-use std::fs::File;
 use std::env;
+use std::fs::File;
 
 fn main() {
     let path = if let Some(arg) = env::args().nth(1) {
