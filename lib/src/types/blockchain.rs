@@ -14,7 +14,7 @@ use crate::{
         block::Block,
         transaction::{Transaction, TransactionOutput},
     },
-    util::{MerkelRoot, Savable},
+    util::{MerkleRoot, Savable},
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -69,7 +69,7 @@ impl BlockChain {
                 return Err(BtcError::InvalidBlock);
             }
 
-            let calculated_merkel_root = MerkelRoot::calculate(&block.transactions);
+            let calculated_merkel_root = MerkleRoot::calculate(&block.transactions);
 
             if calculated_merkel_root != block.header.merkle_root {
                 println!("merkel root does not match");

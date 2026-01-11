@@ -28,9 +28,9 @@ where
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MerkelRoot(Hash);
+pub struct MerkleRoot(Hash);
 
-impl MerkelRoot {
+impl MerkleRoot {
     pub fn calculate(transactions: &[Transaction]) -> Self {
         let mut layer = vec![];
 

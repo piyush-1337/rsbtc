@@ -10,7 +10,7 @@ use crate::{
     error::{BtcError, Result},
     sha256::Hash,
     types::{Transaction, TransactionOutput},
-    util::{MerkelRoot, Savable},
+    util::{MerkleRoot, Savable},
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -175,7 +175,7 @@ pub struct BlockHeader {
     pub timestamp: DateTime<Utc>,
     pub nonce: u64,
     pub prev_block_hash: Hash,
-    pub merkle_root: MerkelRoot,
+    pub merkle_root: MerkleRoot,
     pub target: U256,
 }
 
@@ -184,7 +184,7 @@ impl BlockHeader {
         timestamp: DateTime<Utc>,
         nonce: u64,
         prev_block_hash: Hash,
-        merkle_root: MerkelRoot,
+        merkle_root: MerkleRoot,
         target: U256,
     ) -> Self {
         Self {
