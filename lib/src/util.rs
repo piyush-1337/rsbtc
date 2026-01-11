@@ -21,7 +21,7 @@ where
         self.save(file)
     }
 
-    fn load_from_file<P: AsRef<Path>>(&self, path: P) -> IoResult<Self> {
+    fn load_from_file<P: AsRef<Path>>(path: P) -> IoResult<Self> {
         let file = File::open(&path)?;
         Self::load(file)
     }
