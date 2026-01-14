@@ -24,3 +24,4 @@ pub const MIN_TARGET: U256 = U256([
 ]);
 pub const DIFICULTY_UPDATE_INTERVAL: u64 = 50;
 pub const MAX_MEMPOOL_TRANSACTION_AGE: u64 = 600;
+pub const BLOCK_TRANSACTION_CAP: usize = 20;
