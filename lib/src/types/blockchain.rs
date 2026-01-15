@@ -268,6 +268,28 @@ impl BlockChain {
         (crate::INITIAL_REWARD * 10u64.pow(8)) >> halvings
     }
 
+    pub fn calculate_fees(&self, transactions: &[Transaction]) -> u64 {
+        transactions
+            .iter()
+            .map(|tx| {
+                let all_inputs: u64 = tx
+                    .inputs
+                    .iter()
+                    .map(|input| {
+                        self.utxos
+                            .get(&input.prev_tx_output_hash)
+                            .map(|(_, output)| output.value)
+                            .unwrap_or(0)
+                    })
+                    .sum();
+
+                let all_outputs: u64 = tx.outputs.iter().map(|output| output.value).sum();
+
+                all_inputs - all_outputs
+            })
+            .sum()
+    }
+
     pub fn utxos(&self) -> &HashMap<Hash, (bool, TransactionOutput)> {
         &self.utxos
     }

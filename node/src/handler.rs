@@ -173,6 +173,9 @@ pub async fn handle_connection(mut socket: TcpStream) {
                         .collect::<Vec<_>>(),
                 );
 
+                let miner_fees = blockchain.calculate_fees(&transactions);
+                let reward = blockchain.calculate_block_reward();
+
                 transactions.insert(
                     0,
                     Transaction {
@@ -180,14 +183,14 @@ pub async fn handle_connection(mut socket: TcpStream) {
                         outputs: vec![TransactionOutput {
                             pubkey,
                             unique_id: Uuid::new_v4(),
-                            value: 0,
+                            value: reward + miner_fees,
                         }],
                     },
                 );
 
                 let merkle_root = MerkleRoot::calculate(&transactions);
 
-                let mut block = Block::new(
+                let block = Block::new(
                     BlockHeader {
                         timestamp: Utc::now(),
                         nonce: 0,
@@ -201,20 +204,6 @@ pub async fn handle_connection(mut socket: TcpStream) {
                     },
                     transactions,
                 );
-
-                let miner_fees = match block.calculate_miner_fees(blockchain.utxos()) {
-                    Ok(fees) => fees,
-                    Err(e) => {
-                        eprintln!("failed to calculate miner fees: {}", e);
-                        return;
-                    }
-                };
-
-                let reward = blockchain.calculate_block_reward();
-
-                block.transactions[0].outputs[0].value = reward + miner_fees;
-
-                block.header.merkle_root = MerkleRoot::calculate(&block.transactions);
 
                 let message = Template(block);
                 message.send_async(&mut socket).await.unwrap();
