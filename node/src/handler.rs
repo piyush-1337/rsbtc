@@ -26,7 +26,7 @@ pub async fn handle_connection(mut socket: TcpStream) {
 
             FetchBlock(height) => {
                 let blockchain = crate::BLOCKCHAIN.read().await;
-                let Some(block) = blockchain.blocks().nth(height as usize).cloned() else {
+                let Some(block) = blockchain.blocks().nth(height).cloned() else {
                     return;
                 };
 
