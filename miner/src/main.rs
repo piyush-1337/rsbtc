@@ -71,15 +71,15 @@ impl Miner {
         let sender = self.mined_block_sender.clone();
 
         thread::spawn(move || {
-            if mining.load(Ordering::Relaxed) {
-                if let Some(mut block) = template.lock().unwrap().clone() {
-                    println!("Mining block with target: {}", block.header.target);
+            if mining.load(Ordering::Relaxed)
+                && let Some(mut block) = template.lock().unwrap().clone()
+            {
+                println!("Mining block with target: {}", block.header.target);
 
-                    if block.header.mine(2_000_000) {
-                        println!("Block mined: {}", block.hash());
-                        sender.send(block).expect("Failed to send mined block");
-                        mining.store(false, Ordering::Relaxed);
-                    }
+                if block.header.mine(2_000_000) {
+                    println!("Block mined: {}", block.hash());
+                    sender.send(block).expect("Failed to send mined block");
+                    mining.store(false, Ordering::Relaxed);
                 }
             }
             thread::yield_now();
@@ -122,8 +122,11 @@ impl Miner {
     }
 
     async fn validate_template(&self) -> Result<()> {
-        if let Some(template) = self.current_template.lock().unwrap().clone() {
+        let template_opt = self.current_template.lock().unwrap().clone();
+
+        if let Some(template) = template_opt {
             let message = Message::ValidateTemplate(template);
+
             let mut stream_lock = self.stream.lock().await;
             message.send_async(&mut *stream_lock).await?;
             drop(stream_lock);
