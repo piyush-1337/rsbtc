@@ -38,7 +38,7 @@ pub fn generate_dummy_config(path: &PathBuf) -> Result<()> {
                 key: PathBuf::from("bob_key"),
             },
         ],
-        default_node: "127.0.0.1:8333".to_string(),
+        default_node: "127.0.0.1:9000".to_string(),
         fee_config: FeeConfig {
             fee_type: FeeType::Percent,
             value: 0.1,

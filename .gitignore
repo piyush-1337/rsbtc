@@ -1,5 +1,1 @@
 /target
-*.cbor
-*.pem
-miner/*.priv.cbor
-miner/*.pub.pem

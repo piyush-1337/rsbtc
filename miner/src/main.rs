@@ -70,7 +70,7 @@ impl Miner {
         let mining = self.mining.clone();
         let sender = self.mined_block_sender.clone();
 
-        thread::spawn(move || {
+        thread::spawn(move || loop {
             if mining.load(Ordering::Relaxed)
                 && let Some(mut block) = template.lock().unwrap().clone()
             {
