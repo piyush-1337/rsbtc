@@ -1,12 +1,12 @@
-use cursive::views::TextContent;
-use tokio::task::JoinHandle;
-use tokio::time::{self, Duration};
-use tracing::*;
-use std::sync::Arc;
-use btclib::types::Transaction;
 use crate::core::Core;
 use crate::ui::run_ui;
 use crate::util::big_mode_btc;
+use btclib::types::Transaction;
+use cursive::views::TextContent;
+use std::sync::Arc;
+use tokio::task::JoinHandle;
+use tokio::time::{self, Duration};
+use tracing::*;
 
 pub async fn update_utxos(core: Arc<Core>) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -20,7 +20,10 @@ pub async fn update_utxos(core: Arc<Core>) -> JoinHandle<()> {
     })
 }
 
-pub async fn handle_transactions(rx: kanal::AsyncReceiver<Transaction>, core: Arc<Core>) -> JoinHandle<()> {
+pub async fn handle_transactions(
+    rx: kanal::AsyncReceiver<Transaction>,
+    core: Arc<Core>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         while let Ok(transaction) = rx.recv().await {
             if let Err(e) = core.send_transaction(transaction).await {

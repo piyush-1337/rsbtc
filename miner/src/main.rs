@@ -70,19 +70,21 @@ impl Miner {
         let mining = self.mining.clone();
         let sender = self.mined_block_sender.clone();
 
-        thread::spawn(move || loop {
-            if mining.load(Ordering::Relaxed)
-                && let Some(mut block) = template.lock().unwrap().clone()
-            {
-                println!("Mining block with target: {}", block.header.target);
+        thread::spawn(move || {
+            loop {
+                if mining.load(Ordering::Relaxed)
+                    && let Some(mut block) = template.lock().unwrap().clone()
+                {
+                    println!("Mining block with target: {}", block.header.target);
 
-                if block.header.mine(2_000_000) {
-                    println!("Block mined: {}", block.hash());
-                    sender.send(block).expect("Failed to send mined block");
-                    mining.store(false, Ordering::Relaxed);
+                    if block.header.mine(2_000_000) {
+                        println!("Block mined: {}", block.hash());
+                        sender.send(block).expect("Failed to send mined block");
+                        mining.store(false, Ordering::Relaxed);
+                    }
                 }
+                thread::yield_now();
             }
-            thread::yield_now();
         })
     }
 

@@ -186,11 +186,7 @@ impl Core {
             .sum()
     }
 
-    pub fn create_transaction(
-        &self,
-        recipient: &PublicKey,
-        amount: u64,
-    ) -> Result<Transaction> {
+    pub fn create_transaction(&self, recipient: &PublicKey, amount: u64) -> Result<Transaction> {
         let fee = self.calculate_fee(amount);
         let total_amount = amount + fee;
         let mut inputs = Vec::new();
