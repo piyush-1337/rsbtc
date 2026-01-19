@@ -4,7 +4,6 @@ use btclib::network::Message;
 use btclib::types::{Transaction, TransactionOutput};
 use btclib::util::Savable;
 use crossbeam_skiplist::SkipMap;
-use cursive::default;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -174,8 +173,7 @@ impl Core {
         let transaction = self.create_transaction(&recipient_key, amount)?;
         debug!("Sending transaction asynchronously");
 
-        self.tx_sender.send(transaction);
-
+        self.tx_sender.send(transaction)?;
 
         Ok(())
     }
