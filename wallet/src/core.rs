@@ -4,16 +4,19 @@ use btclib::network::Message;
 use btclib::types::{Transaction, TransactionOutput};
 use btclib::util::Savable;
 use crossbeam_skiplist::SkipMap;
+use cursive::default;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tracing::*;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Key {
-    public: PathBuf,
-    private: PathBuf,
+    pub public: PathBuf,
+    pub private: PathBuf,
 }
 
 #[derive(Clone)]
@@ -83,27 +86,30 @@ impl UtxoStore {
     }
 }
 
-#[derive(Clone)]
 pub struct Core {
     pub config: Config,
     utxos: UtxoStore,
-    pub tx_sender: kanal::AsyncSender<Transaction>,
+    pub tx_sender: kanal::Sender<Transaction>,
+    pub stream: Mutex<TcpStream>,
 }
 
 impl Core {
-    fn new(config: Config, utxos: UtxoStore) -> Self {
+    fn new(config: Config, utxos: UtxoStore, steam: TcpStream) -> Self {
         let (tx_sender, _) = kanal::bounded(10);
 
         Self {
             config,
             utxos,
-            tx_sender: tx_sender.clone_async(),
+            tx_sender,
+            stream: Mutex::new(steam),
         }
     }
 
-    pub fn load(config_path: PathBuf) -> Result<Self> {
+    pub async fn load(config_path: PathBuf) -> Result<Self> {
+        info!("Loading config from config: {:?}", config_path);
         let config: Config = toml::from_str(&fs::read_to_string(&config_path)?)?;
         let mut utxos = UtxoStore::new();
+        let steam = TcpStream::connect(&config.default_node).await?;
 
         for key in &config.my_keys {
             let public = PublicKey::load_from_file(&key.public)?;
@@ -112,16 +118,21 @@ impl Core {
             utxos.add_key(LoadedKey { public, private });
         }
 
-        Ok(Core::new(config, utxos))
+        Ok(Self::new(config, utxos, steam))
     }
 
     pub async fn fetch_utxos(&self) -> Result<()> {
-        let mut stream = TcpStream::connect(&self.config.default_node).await?;
+        debug!("Fetching UTXOs from node: {}", self.config.default_node);
 
         for key in &self.utxos.my_keys {
             let message = Message::FetchUTXOs(key.public.clone());
-            message.send_async(&mut stream).await?;
-            if let Message::UTXOs(utxos) = Message::recv_async(&mut stream).await? {
+            message.send_async(&mut *self.stream.lock().await).await?;
+
+            if let Message::UTXOs(utxos) =
+                Message::recv_async(&mut *self.stream.lock().await).await?
+            {
+                debug!("Received {} UTXOs for key: {:?}", utxos.len(), key.public);
+
                 self.utxos.utxos.insert(
                     key.public.clone(),
                     utxos
@@ -130,18 +141,41 @@ impl Core {
                         .collect(),
                 );
             } else {
+                error!("Unexpected response from node");
                 return Err(anyhow::anyhow!("Unexpected response from node"));
             }
         }
-
+        info!("UTXOs fetched successfully");
         Ok(())
     }
 
     pub async fn send_transaction(&self, transaction: Transaction) -> Result<()> {
-        let mut stream = TcpStream::connect(&self.config.default_node).await?;
+        debug!("Sending transaction to node: {}", self.config.default_node);
 
         let message = Message::SubmitTransaction(transaction);
-        message.send_async(&mut stream).await?;
+        message.send_async(&mut *self.stream.lock().await).await?;
+
+        info!("Transaction sent successfully");
+        Ok(())
+    }
+
+    pub fn send_transaction_async(&self, recipient: &str, amount: u64) -> Result<()> {
+        info!("Preparing to send {} satoshis to {}", amount, recipient);
+
+        let recipient_key = self
+            .config
+            .contacts
+            .iter()
+            .find(|r| r.name == recipient)
+            .ok_or_else(|| anyhow::anyhow!("Recipient not found"))?
+            .load()?
+            .key;
+
+        let transaction = self.create_transaction(&recipient_key, amount)?;
+        debug!("Sending transaction asynchronously");
+
+        self.tx_sender.send(transaction);
+
 
         Ok(())
     }
@@ -150,16 +184,11 @@ impl Core {
         self.utxos
             .utxos
             .iter()
-            .map(|entry| {
-                entry.value()
-                    .iter()
-                    .map(|utxo| utxo.1.value)
-                    .sum::<u64>()
-            })
+            .map(|entry| entry.value().iter().map(|utxo| utxo.1.value).sum::<u64>())
             .sum()
     }
 
-    pub async fn create_transaction(
+    pub fn create_transaction(
         &self,
         recipient: &PublicKey,
         amount: u64,
@@ -207,7 +236,7 @@ impl Core {
         if input_sum < total_amount {
             return Err(anyhow::anyhow!("Insufficient funds"));
         }
-        
+
         let mut outputs = vec![TransactionOutput {
             value: amount,
             unique_id: uuid::Uuid::new_v4(),
@@ -227,13 +256,9 @@ impl Core {
 
     fn calculate_fee(&self, amount: u64) -> u64 {
         match self.config.fee_config.fee_type {
-            FeeType::Fixed => {
-                self.config.fee_config.value as u64
-            }
+            FeeType::Fixed => self.config.fee_config.value as u64,
 
-            FeeType::Percent => {
-                (amount as f64 * self.config.fee_config.value / 100.0) as u64
-            }
+            FeeType::Percent => (amount as f64 * self.config.fee_config.value / 100.0) as u64,
         }
     }
 }
