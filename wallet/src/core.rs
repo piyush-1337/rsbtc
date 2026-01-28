@@ -108,7 +108,7 @@ impl Core {
         info!("Loading config from config: {:?}", config_path);
         let config: Config = toml::from_str(&fs::read_to_string(&config_path)?)?;
         let mut utxos = UtxoStore::new();
-        let steam = TcpStream::connect(&config.default_node).await?;
+        let stream = TcpStream::connect(&config.default_node).await?;
 
         for key in &config.my_keys {
             let public = PublicKey::load_from_file(&key.public)?;
@@ -117,7 +117,7 @@ impl Core {
             utxos.add_key(LoadedKey { public, private });
         }
 
-        Ok(Self::new(config, utxos, steam))
+        Ok(Self::new(config, utxos, stream))
     }
 
     pub async fn fetch_utxos(&self) -> Result<()> {
